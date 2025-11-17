@@ -12,12 +12,12 @@ import os
 import json
 import asyncio
 from dotenv import load_dotenv
-from agents.supervisor import SupervisorAgent
+from agents.supervisor_langgraph import SupervisorAgentLangGraph
 
 load_dotenv()
 
-# Initialize Supervisor Agent
-supervisor = SupervisorAgent()
+# Initialize LangGraph Supervisor Agent
+supervisor = SupervisorAgentLangGraph()
 
 app = FastAPI(
     title="Google Intelligent Group API",
@@ -61,141 +61,195 @@ async def health_check():
 
 
 async def stream_query_processing(query: str):
-    """Stream query processing results as they become available."""
+    """Stream query processing results from LangGraph supervisor."""
     try:
         # Send initial status
         yield f"data: {json.dumps({'type': 'status', 'message': 'Processing query...', 'agent': 'supervisor'})}\n\n"
         
-        # Step 1: Plan agent usage
-        yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing query and planning agent usage...', 'agent': 'supervisor'})}\n\n"
-        agent_plan = await supervisor._plan_agent_usage(query)
+        # Track which agents have been processed
+        processed_agents = set()
         
-        results = {
-            "supervisor": f"Processing query: {query}",
-            "plan": agent_plan,
-            "agent_outputs": {}
-        }
+        # Track if we've seen the summarize node
+        summary_sent = False
         
-        # Execute agents in logical order: GoogleMap -> Research -> Telephone -> Calendar
-        # This ensures dependencies are met (e.g., GoogleMap results available for Telephone/Calendar)
-        
-        # 1. Execute GoogleMap Agent first (if needed) - provides location/phone data
-        if agent_plan.get("use_googlemap"):
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Searching for locations...', 'agent': 'googleMap'})}\n\n"
-            try:
-                map_result = await supervisor._execute_googlemap(query)
-                results["agent_outputs"]["googleMap"] = map_result
-                formatted = map_result.get("formatted", "")
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'googleMap', 'output': formatted})}\n\n"
-            except Exception as e:
-                error_result = {
-                    "agent": "GoogleMap",
-                    "success": False,
-                    "error": str(e),
-                    "formatted": f"❌ GoogleMap Agent Error: {str(e)}"
+        # Stream from LangGraph
+        async for chunk in supervisor.stream_query(query):
+            agent_outputs = chunk.get("agent_outputs", {})
+            execution_order = chunk.get("execution_order", [])
+            
+            # Handle plan node
+            if "plan" in chunk and chunk.get("plan"):
+                plan = chunk.get("plan", {})
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing query and planning agent usage...', 'agent': 'supervisor'})}\n\n"
+                if plan.get("use_googlemap"):
+                    yield f"data: {json.dumps({'type': 'status', 'message': 'Will search for locations...', 'agent': 'googleMap'})}\n\n"
+                if plan.get("use_research"):
+                    yield f"data: {json.dumps({'type': 'status', 'message': 'Will research...', 'agent': 'research'})}\n\n"
+                if plan.get("use_telephone"):
+                    yield f"data: {json.dumps({'type': 'status', 'message': 'Will make phone call...', 'agent': 'telephone'})}\n\n"
+                if plan.get("use_calendar"):
+                    yield f"data: {json.dumps({'type': 'status', 'message': 'Will manage calendar...', 'agent': 'calendar'})}\n\n"
+            
+            # Check for new agent outputs
+            for agent_name in ["googleMap", "research", "telephone", "calendar"]:
+                if agent_name in agent_outputs and agent_name not in processed_agents:
+                    output = agent_outputs[agent_name]
+                    processed_agents.add(agent_name)
+                    
+                    # Send status message (skip for research if it was skipped)
+                    if isinstance(output, dict) and output.get("skipped"):
+                        # Research agent was skipped - just send the output
+                        formatted = output.get("formatted", str(output))
+                        yield f"data: {json.dumps({'type': 'agent_output', 'agent': agent_name, 'output': formatted})}\n\n"
+                    else:
+                        # Active agent - send status then output
+                        status_msgs = {
+                            "googleMap": "Searching for locations...",
+                            "research": "Researching...",
+                            "telephone": "Initiating phone call...",
+                            "calendar": "Managing calendar..."
+                        }
+                        yield f"data: {json.dumps({'type': 'status', 'message': status_msgs.get(agent_name, 'Processing...'), 'agent': agent_name})}\n\n"
+                        
+                        # Send agent output
+                        if isinstance(output, dict):
+                            formatted = output.get("formatted", str(output))
+                        else:
+                            formatted = str(output)
+                        yield f"data: {json.dumps({'type': 'agent_output', 'agent': agent_name, 'output': formatted})}\n\n"
+            
+            # Check for summary - improved detection (check multiple fields and ensure it's a string)
+            summary_text = None
+            if "summary" in chunk:
+                summary_text = chunk.get("summary")
+                if summary_text and not isinstance(summary_text, str):
+                    summary_text = str(summary_text)
+                # Debug logging
+                if summary_text:
+                    print(f"\n[STREAM] Found summary in chunk: {summary_text[:100]}...")
+            elif "response" in chunk:
+                summary_text = chunk.get("response")
+                if summary_text and not isinstance(summary_text, str):
+                    summary_text = str(summary_text)
+                # Debug logging
+                if summary_text:
+                    print(f"\n[STREAM] Found response in chunk: {summary_text[:100]}...")
+            
+            # Debug: log chunk keys
+            if not summary_sent:
+                chunk_keys = list(chunk.keys())
+                print(f"[STREAM] Chunk keys: {chunk_keys}")
+                if "summary" in chunk or "response" in chunk:
+                    print(f"[STREAM] Summary value: {chunk.get('summary', chunk.get('response', 'None'))[:100]}")
+            
+            # Check if summary exists and is not empty
+            if summary_text and summary_text.strip() and not summary_sent:
+                summary_sent = True
+                summary_text = summary_text.strip()
+                
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Generating final summary...', 'agent': 'supervisor'})}\n\n"
+                
+                # Format agent outputs for final response
+                final_agent_outputs = {}
+                for agent_name, agent_result in agent_outputs.items():
+                    if isinstance(agent_result, dict):
+                        final_agent_outputs[agent_name] = agent_result.get("formatted", str(agent_result))
+                    else:
+                        final_agent_outputs[agent_name] = str(agent_result)
+                
+                # Ensure supervisor is set with the summary
+                final_agent_outputs["supervisor"] = summary_text
+                
+                final_response = {
+                    "type": "complete",
+                    "response": summary_text,
+                    "agent_outputs": final_agent_outputs,
+                    "message": "Query processed successfully"
                 }
-                results["agent_outputs"]["googleMap"] = error_result
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'googleMap', 'output': error_result['formatted']})}\n\n"
+                yield f"data: {json.dumps(final_response)}\n\n"
+                break  # Exit loop after summary
         
-        # 2. Execute Research Agent (independent, can run in parallel)
-        if agent_plan.get("use_research"):
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Researching...', 'agent': 'research'})}\n\n"
-            try:
-                research_result = await supervisor._execute_research(query)
-                results["agent_outputs"]["research"] = research_result
-                formatted = research_result.get("formatted", "")
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'research', 'output': formatted})}\n\n"
-            except Exception as e:
-                error_result = {
-                    "agent": "Research",
-                    "success": False,
-                    "error": str(e),
-                    "formatted": f"❌ Research Agent Error: {str(e)}"
-                }
-                results["agent_outputs"]["research"] = error_result
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'research', 'output': error_result['formatted']})}\n\n"
-        else:
-            # Research agent not needed - show status
-            research_status = {
-                "agent": "Research",
-                "success": True,
-                "formatted": "ℹ️ Research Agent: Not needed for this query. This agent is used for general information and research questions.",
-                "skipped": True
-            }
-            results["agent_outputs"]["research"] = research_status
-            yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'research', 'output': research_status['formatted']})}\n\n"
-        
-        # 3. Execute Telephone Agent (may use GoogleMap results)
-        # Also trigger if making reservation and GoogleMap found results
-        should_call_telephone = agent_plan.get("use_telephone", False)
-        
-        # Auto-trigger telephone if making reservation and we have restaurant results
-        if not should_call_telephone:
-            if agent_plan.get("use_calendar") and results.get("agent_outputs", {}).get("googleMap", {}).get("data", {}).get("results"):
-                # Making a reservation with restaurant found - should call
-                should_call_telephone = True
-        
-        if should_call_telephone:
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Initiating phone call...', 'agent': 'telephone'})}\n\n"
-            try:
-                phone_result = await supervisor._execute_telephone(query, results.get("agent_outputs", {}))
-                results["agent_outputs"]["telephone"] = phone_result
-                formatted = phone_result.get("formatted", "")
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'telephone', 'output': formatted})}\n\n"
-            except Exception as e:
-                error_result = {
-                    "agent": "Telephone",
-                    "success": False,
-                    "error": str(e),
-                    "formatted": f"❌ Telephone Agent Error: {str(e)}"
-                }
-                results["agent_outputs"]["telephone"] = error_result
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'telephone', 'output': error_result['formatted']})}\n\n"
-        
-        # 4. Execute Calendar Agent last (may use GoogleMap results)
-        if agent_plan.get("use_calendar"):
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Managing calendar...', 'agent': 'calendar'})}\n\n"
-            try:
-                calendar_result = await supervisor._execute_calendar(query, results.get("agent_outputs", {}))
-                results["agent_outputs"]["calendar"] = calendar_result
-                formatted = calendar_result.get("formatted", "")
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'calendar', 'output': formatted})}\n\n"
-            except Exception as e:
-                error_result = {
-                    "agent": "Calendar",
-                    "success": False,
-                    "error": str(e),
-                    "formatted": f"❌ Calendar Agent Error: {str(e)}"
-                }
-                results["agent_outputs"]["calendar"] = error_result
-                yield f"data: {json.dumps({'type': 'agent_output', 'agent': 'calendar', 'output': error_result['formatted']})}\n\n"
-        
-        # Generate final summary
-        yield f"data: {json.dumps({'type': 'status', 'message': 'Generating final summary...', 'agent': 'supervisor'})}\n\n"
-        try:
-            summary = await supervisor._generate_summary(query, results)
-        except Exception as e:
-            # Use fallback summary if LLM summary fails
-            summary = supervisor._create_fallback_summary(query, results)
-        
-        # Format agent outputs for final response
-        agent_outputs = {}
-        for agent_name, agent_result in results.get("agent_outputs", {}).items():
-            if isinstance(agent_result, dict):
-                agent_outputs[agent_name] = agent_result.get("formatted", str(agent_result))
+        # If no summary was found but we have agent outputs, generate a comprehensive fallback
+        if not summary_sent and processed_agents:
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Generating final summary...', 'agent': 'supervisor'})}\n\n"
+            
+            # Helper function to extract clean text
+            def extract_clean_text(value):
+                """Extract clean text from various data structures."""
+                if isinstance(value, str):
+                    return value
+                if isinstance(value, dict):
+                    if "text" in value:
+                        return value["text"]
+                    if "content" in value:
+                        return extract_clean_text(value["content"])
+                    if "formatted" in value:
+                        return extract_clean_text(value["formatted"])
+                    if "result" in value:
+                        return extract_clean_text(value["result"])
+                    if "messages" in value and isinstance(value["messages"], list):
+                        if value["messages"]:
+                            return extract_clean_text(value["messages"][-1])
+                    return str(value)
+                if isinstance(value, list):
+                    texts = []
+                    for item in value:
+                        if isinstance(item, dict):
+                            if "text" in item:
+                                texts.append(item["text"])
+                            elif "content" in item:
+                                texts.append(extract_clean_text(item["content"]))
+                            else:
+                                texts.append(str(item))
+                        else:
+                            texts.append(str(item))
+                    return "\n".join(texts)
+                return str(value)
+            
+            # Format agent outputs with clean text extraction
+            final_agent_outputs = {}
+            agent_summaries = []
+            
+            for agent_name, agent_result in agent_outputs.items():
+                if isinstance(agent_result, dict):
+                    formatted = agent_result.get("formatted")
+                    if not formatted:
+                        formatted = agent_result.get("result", agent_result)
+                    clean_text = extract_clean_text(formatted)
+                    final_agent_outputs[agent_name] = clean_text
+                    
+                    # Build summary parts with clean text
+                    if agent_name == "googleMap" and clean_text:
+                        summary_text = clean_text[:200] + "..." if len(clean_text) > 200 else clean_text
+                        agent_summaries.append(f"🗺️ Found restaurants: {summary_text}")
+                    elif agent_name == "calendar" and clean_text:
+                        summary_text = clean_text[:200] + "..." if len(clean_text) > 200 else clean_text
+                        agent_summaries.append(f"📅 Created calendar event: {summary_text}")
+                    elif agent_name == "telephone" and clean_text:
+                        summary_text = clean_text[:200] + "..." if len(clean_text) > 200 else clean_text
+                        agent_summaries.append(f"☎️ Initiated phone call: {summary_text}")
+                    elif agent_name == "research" and clean_text and not agent_result.get("skipped"):
+                        summary_text = clean_text[:200] + "..." if len(clean_text) > 200 else clean_text
+                        agent_summaries.append(f"🔍 Research completed: {summary_text}")
+                else:
+                    clean_text = extract_clean_text(agent_result)
+                    final_agent_outputs[agent_name] = clean_text
+            
+            # Create a comprehensive summary
+            if agent_summaries:
+                summary_text = f"I've successfully processed your request. Here's what was accomplished:\n\n" + "\n\n".join(agent_summaries)
             else:
-                agent_outputs[agent_name] = str(agent_result)
-        
-        agent_outputs["supervisor"] = results.get("supervisor", "Query processed")
-        
-        # Send final response
-        final_response = {
-            "type": "complete",
-            "response": summary,
-            "agent_outputs": agent_outputs,
-            "message": "Query processed successfully"
-        }
-        yield f"data: {json.dumps(final_response)}\n\n"
+                summary_text = f"Query processed successfully. {len(processed_agents)} agent(s) executed: {', '.join(processed_agents)}."
+            
+            final_agent_outputs["supervisor"] = summary_text
+            
+            final_response = {
+                "type": "complete",
+                "response": summary_text,
+                "agent_outputs": final_agent_outputs,
+                "message": "Query processed successfully"
+            }
+            yield f"data: {json.dumps(final_response)}\n\n"
         
     except Exception as e:
         import traceback
