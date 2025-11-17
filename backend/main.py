@@ -230,27 +230,27 @@ async def process_query(request: QueryRequest):
             )
         else:
             # Process query through Supervisor Agent (non-streaming)
-        result = await supervisor.process_query(request.query)
-        
-        # Format response
-        response_text = result.get("response", result.get("summary", "Processing complete"))
-        
-        # Format agent outputs for frontend
-        agent_outputs = {}
-        for agent_name, agent_result in result.get("agent_outputs", {}).items():
-            if isinstance(agent_result, dict):
-                agent_outputs[agent_name] = agent_result.get("formatted", str(agent_result))
-            else:
-                agent_outputs[agent_name] = str(agent_result)
-        
-        # Add supervisor message
-        agent_outputs["supervisor"] = result.get("supervisor", "Query processed")
-        
-        return QueryResponse(
-            response=response_text,
-            agent_outputs=agent_outputs,
-            message="Query processed successfully"
-        )
+            result = await supervisor.process_query(request.query)
+            
+            # Format response
+            response_text = result.get("response", result.get("summary", "Processing complete"))
+            
+            # Format agent outputs for frontend
+            agent_outputs = {}
+            for agent_name, agent_result in result.get("agent_outputs", {}).items():
+                if isinstance(agent_result, dict):
+                    agent_outputs[agent_name] = agent_result.get("formatted", str(agent_result))
+                else:
+                    agent_outputs[agent_name] = str(agent_result)
+            
+            # Add supervisor message
+            agent_outputs["supervisor"] = result.get("supervisor", "Query processed")
+            
+            return QueryResponse(
+                response=response_text,
+                agent_outputs=agent_outputs,
+                message="Query processed successfully"
+            )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
