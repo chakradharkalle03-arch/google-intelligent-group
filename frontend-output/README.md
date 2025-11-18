@@ -7,7 +7,11 @@ This document describes the frontend user interface output for the Google Intell
 ## Screenshots
 
 ### Real Demo UI Screenshot
-See `ui-screenshot.png` (or `ui-screenshot.jpg`) for a visual representation of the actual running application interface.
+See `frontend_UI_pannel.png` for a visual representation of the actual running application interface showing:
+- Supervisor Agent result section with comprehensive summary
+- Right sidebar panels (Map, Calendar, Telephone, Research)
+- Input section with Run button
+- Complete UI layout and design
 
 ## UI Layout
 
