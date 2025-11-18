@@ -216,42 +216,63 @@ Only set agents to true if they are clearly needed for the query."""
         }
     
     def _route_after_plan(self, state: AgentState) -> str:
-        """Route to the next agent after planning."""
+        """
+        Supervisor-driven routing: Evaluates state and decides next agent.
+        
+        This implements Supervisor-driven task assignment where the Supervisor
+        evaluates the complete state after each agent completes and makes
+        intelligent routing decisions based on:
+        - Original plan requirements
+        - Current execution status
+        - Agent dependencies
+        - Workflow context (e.g., reservation vs. general query)
+        """
         plan = state.get("plan", {})
         execution_order = state.get("execution_order", [])
+        agent_outputs = state.get("agent_outputs", {})
         query = state.get("query", "").lower()
         
-        # Determine if this is a reservation workflow (needs calendar before telephone)
+        # Supervisor evaluates: What agents are still needed?
+        needed_agents = []
+        
+        # Check GoogleMap: Needed if in plan and not executed
+        if plan.get("use_googlemap"):
+            if "googleMap" not in execution_order and "googleMap (failed)" not in execution_order:
+                needed_agents.append(("googlemap", 1))  # Priority 1 (highest - provides data for others)
+        
+        # Check Research: Independent, can run anytime
+        if plan.get("use_research"):
+            if "research" not in execution_order and "research (failed)" not in execution_order:
+                needed_agents.append(("research", 2))  # Priority 2
+        
+        # Check Calendar and Telephone: Dependencies matter
         is_reservation = any(kw in query for kw in ["reservation", "reserve", "book", "booking", "appointment"])
+        has_googlemap_data = "googleMap" in agent_outputs and agent_outputs.get("googleMap", {}).get("success", False)
         
-        # Execute agents in logical order:
-        # 1. GoogleMap first (provides location/phone data)
-        # 2. Research (independent)
-        # 3. Calendar (for reservations, should come before telephone)
-        # 4. Telephone (calls after calendar event is created)
+        # For reservations: Calendar should come before Telephone
+        # For other cases: Check dependencies
+        if plan.get("use_calendar"):
+            if "calendar" not in execution_order and "calendar (failed)" not in execution_order:
+                # Calendar can run if we have location data (from GoogleMap) or if it's independent
+                if has_googlemap_data or not plan.get("use_googlemap"):
+                    priority = 3 if is_reservation else 4
+                    needed_agents.append(("calendar", priority))
         
-        if plan.get("use_googlemap") and "googleMap" not in execution_order and "googleMap (failed)" not in execution_order:
-            return "googlemap"
+        if plan.get("use_telephone"):
+            if "telephone" not in execution_order and "telephone (failed)" not in execution_order:
+                # Telephone needs phone number from GoogleMap (if GoogleMap was used)
+                if has_googlemap_data or not plan.get("use_googlemap"):
+                    priority = 4 if is_reservation else 3
+                    needed_agents.append(("telephone", priority))
         
-        if plan.get("use_research") and "research" not in execution_order and "research (failed)" not in execution_order:
-            return "research"
+        # Supervisor decision: Route to highest priority needed agent
+        if needed_agents:
+            # Sort by priority (lower number = higher priority)
+            needed_agents.sort(key=lambda x: x[1])
+            next_agent = needed_agents[0][0]
+            return next_agent
         
-        # For reservations: Calendar before Telephone
-        # For other cases: Check which is needed first
-        if is_reservation:
-            # Reservation workflow: Calendar first, then Telephone
-            if plan.get("use_calendar") and "calendar" not in execution_order and "calendar (failed)" not in execution_order:
-                return "calendar"
-            if plan.get("use_telephone") and "telephone" not in execution_order and "telephone (failed)" not in execution_order:
-                return "telephone"
-        else:
-            # Non-reservation: Telephone before Calendar (if both needed)
-            if plan.get("use_telephone") and "telephone" not in execution_order and "telephone (failed)" not in execution_order:
-                return "telephone"
-            if plan.get("use_calendar") and "calendar" not in execution_order and "calendar (failed)" not in execution_order:
-                return "calendar"
-        
-        # All agents executed, go to summarize
+        # All agents executed - Supervisor routes to summarization
         return "summarize"
     
     async def _googlemap_node(self, state: AgentState) -> AgentState:
