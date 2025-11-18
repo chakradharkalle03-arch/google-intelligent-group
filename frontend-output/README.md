@@ -4,6 +4,11 @@
 
 This document describes the frontend user interface output for the Google Intelligent Group Multi-Agent System built with LangChain 1.0 & Next.js.
 
+## Screenshots
+
+### Real Demo UI Screenshot
+See `ui-screenshot.png` (or `ui-screenshot.jpg`) for a visual representation of the actual running application interface.
+
 ## UI Layout
 
 ### Header Section
