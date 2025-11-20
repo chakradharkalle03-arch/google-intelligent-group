@@ -32,28 +32,37 @@
 
 ## ⚠️ Current Issue
 
-**Podman command is not accessible from PowerShell**
+**WSL (Windows Subsystem for Linux) is not installed**
 
-The `podman` command is not in the system PATH, which means:
-- Podman Desktop may not be fully started
-- Podman executable path may not be added to PATH
-- PowerShell session may need to be restarted
+Podman Desktop on Windows requires WSL to be installed, but it's not currently installed on your system.
+
+**Error Message:**
+```
+The Windows Subsystem for Linux is not installed.
+You can install by running 'wsl.exe --install'.
+```
+
+**Impact:**
+- Podman CLI is installed (version 5.7.0) ✅
+- Podman Desktop is installed ✅
+- WSL is not installed ❌ (required for Podman machine)
+- Cannot initialize Podman machine without WSL ❌
 
 ---
 
 ## 🔧 Solution Steps
 
-### Option 1: Start Podman Desktop and Restart PowerShell
+### Option 1: Install WSL and Use Podman
 
-1. **Start Podman Desktop**
-   - Open "Podman Desktop" from Start Menu
-   - Wait for Podman machine to start (1-2 minutes)
-   - Look for "Running" status in Podman Desktop
+1. **Install WSL (as Administrator)**
+   - Open PowerShell **as Administrator**
+   - Run: `wsl --install`
+   - Restart your computer when prompted
 
-2. **Restart PowerShell**
-   - Close current PowerShell window
-   - Open new PowerShell window
-   - Podman Desktop should have updated PATH
+2. **After Restart**
+   - Verify WSL: `wsl --version`
+   - Start Podman Desktop from Start Menu
+   - Wait for Podman machine to initialize (1-2 minutes)
 
 3. **Verify Podman**
    ```powershell
@@ -66,6 +75,8 @@ The `podman` command is not in the system PATH, which means:
    cd C:\Users\user\Downloads\readlife
    .\run-podman.ps1
    ```
+
+**See:** `docs/PODMAN_WSL_REQUIREMENT.md` for detailed instructions
 
 ### Option 2: Use Docker Desktop (Alternative)
 
@@ -107,19 +118,27 @@ If Podman continues to have issues:
 
 ## 🎯 Next Steps
 
-1. **Start Podman Desktop** (if using Podman)
-   - Wait for machine to start
-   - Restart PowerShell
+**Choose one option:**
+
+1. **Install WSL + Use Podman** (Recommended for Podman)
+   - Run `wsl --install` as Administrator
+   - Restart computer
+   - Start Podman Desktop
    - Run `.\run-podman.ps1`
 
-2. **OR Use Docker Desktop** (alternative)
+2. **Use Docker Desktop** (Alternative - No WSL required)
    - Install Docker Desktop
    - Use `docker` instead of `podman` commands
+   - Containerfiles are compatible
 
-3. **Verify All Services**
+3. **Verify All Services** (After containers are running)
    - Frontend: http://localhost:3000
    - Backend: http://localhost:8000
    - Fonoster: http://localhost:3001
+
+**Documentation:**
+- WSL Requirement: `docs/PODMAN_WSL_REQUIREMENT.md`
+- Deployment Guide: `docs/PODMAN_DEPLOYMENT.md`
 
 ---
 
