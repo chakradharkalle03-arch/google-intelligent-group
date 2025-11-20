@@ -39,3 +39,9 @@ out/
 npm-debug.log*
 yarn-debug.log*
 
+
+# Container image tar files
+*.tar
+backend-image.tar
+frontend-image.tar
+fonoster-image.tar
