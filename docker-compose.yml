@@ -5,6 +5,7 @@ services:
     build:
       context: ./fonoster-server
       dockerfile: Containerfile
+      no_cache: false
     ports:
       - "0.0.0.0:3001:3001"
     environment:

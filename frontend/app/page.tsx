@@ -13,7 +13,7 @@ export default function Home() {
 
   const handleSubmit = async (e?: FormEvent) => {
     if (e) {
-      e.preventDefault()
+    e.preventDefault()
     }
     await submitQuery(query)
   }
@@ -35,7 +35,7 @@ export default function Home() {
         <div className="absolute top-20 left-20 w-2 h-2 bg-purple-400/40 rounded-full animate-float"></div>
         <div className="absolute top-40 right-40 w-3 h-3 bg-pink-400/40 rounded-full animate-float-delayed"></div>
         <div className="absolute bottom-40 left-1/3 w-2 h-2 bg-blue-400/40 rounded-full animate-float-slow"></div>
-      </div>
+              </div>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 max-w-[1600px] relative z-10">
         {/* Manus-Style Header */}
@@ -48,7 +48,7 @@ export default function Home() {
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-green-700 text-xs font-bold">System Online</span>
             </div>
-          </div>
+              </div>
           <p className="text-gray-600 text-sm sm:text-base">Multi-Agent System with LangChain 1.0 & Next.js</p>
         </header>
 
@@ -68,7 +68,7 @@ export default function Home() {
               onSubmit={handleSubmit}
               loading={loading}
             />
-          </div>
+              </div>
 
           {/* Right Column: Results Display Area (1/3 width) */}
           <AgentResults agentOutputs={agentOutputs} />
