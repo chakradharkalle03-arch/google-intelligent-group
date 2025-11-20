@@ -41,12 +41,38 @@ if __name__ == "__main__":
     import hypercorn.asyncio
     from hypercorn.config import Config
     
-    # Use PORT from environment (for deployment) or default to 8000
-    port = int(os.environ.get("PORT", 8000))
-    host = os.environ.get("HOST", "127.0.0.1")
+    # Use PORT from environment (for deployment) or default to 8081
+    port = int(os.environ.get("PORT", os.environ.get("BACKEND_PORT", 8081)))
+    host = os.environ.get("HOST", os.environ.get("BACKEND_HOST", "127.0.0.1"))
+    
+    # In containers, we need 0.0.0.0 to listen on all interfaces
+    # On Windows local development, use 127.0.0.1 to avoid permission issues
+    # Check if we're running in a container (common indicators)
+    is_container = os.path.exists("/.dockerenv") or os.environ.get("CONTAINER") == "true"
+    
+    # Allow 0.0.0.0 for remote access (requires admin on Windows)
+    # Only auto-change if explicitly set to avoid permission errors in non-admin mode
+    if not is_container and host == "0.0.0.0":
+        import platform
+        if platform.system() == "Windows":
+            # Check if running as admin - if not, warn but allow (user may have admin)
+            try:
+                import ctypes
+                is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+                if not is_admin:
+                    print("WARNING: 0.0.0.0 requires admin privileges on Windows.")
+                    print("If you get permission errors, either:")
+                    print("  1. Run PowerShell as Administrator, OR")
+                    print("  2. Use 127.0.0.1 for local access only")
+                    # Don't auto-change - let user decide
+            except:
+                pass  # Continue with 0.0.0.0
     
     config = Config()
     config.bind = [f"{host}:{port}"]
     config.use_reloader = os.environ.get("ENVIRONMENT") != "production"
+    
+    print(f"Starting backend server on http://{host}:{port}")
+    print(f"Health check: http://{host}:{port}/health")
     
     asyncio.run(hypercorn.asyncio.serve(app, config))

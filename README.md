@@ -135,8 +135,8 @@ Please help me find a good Indian restaurant near Taipei 101 and make a reservat
 ## 📚 Documentation
 
 - `README.md` - This file
-- `GITHUB_PUSH_INSTRUCTIONS.md` - How to push to GitHub
-- `PROJECT_COMPLETION_ASSESSMENT.md` - Project status
+- `docs/PODMAN_DEPLOYMENT.md` - Complete Podman container deployment guide
+- `docs/DEVELOPMENT_PLAN.md` - Development plan and architecture
 - `fonoster-server/SETUP_GUIDE.md` - Fonoster setup
 - `fonoster-server/FONOSTER_SDK_INTEGRATION.md` - SDK integration
 
@@ -165,6 +165,31 @@ Please help me find a good Indian restaurant near Taipei 101 and make a reservat
 ---
 
 ## 🚀 Deployment
+
+### Podman Container Deployment (Local)
+
+**Quick Start:**
+```bash
+# Windows PowerShell
+.\start-podman.ps1
+
+# Linux/macOS
+chmod +x start-podman.sh
+./start-podman.sh
+```
+
+**Manual Build & Run:**
+```bash
+# Build containers
+cd backend && podman build -t readlife-backend:latest -f Containerfile . && cd ..
+cd frontend && podman build -t readlife-frontend:latest -f Containerfile --build-arg NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 . && cd ..
+
+# Run containers
+podman run -d --name readlife-backend -p 8000:8000 --env-file backend/.env readlife-backend:latest
+podman run -d --name readlife-frontend -p 3000:3000 readlife-frontend:latest
+```
+
+See `docs/PODMAN_DEPLOYMENT.md` for complete documentation.
 
 ### AWS EC2 Deployment
 - Frontend: Deploy Next.js app

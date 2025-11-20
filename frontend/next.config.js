@@ -3,11 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone', // Required for containerization
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080',
   },
   async rewrites() {
     // Use a default API URL if not provided during build
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080';
     const cleanUrl = apiUrl.replace(/\/$/, '').trim();
     
     // Validate URL format - ensure it's a valid URL
@@ -16,7 +16,7 @@ const nextConfig = {
       return [
         {
           source: '/api/:path*',
-          destination: 'http://127.0.0.1:8000/:path*',
+          destination: 'http://127.0.0.1:8080/:path*',
         },
       ];
     }

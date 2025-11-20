@@ -1,523 +1,515 @@
-# Podman Container Deployment Guide
-## Google Intelligent Group Multi-Agent System
+# Podman Deployment Guide
 
-Complete guide for deploying the project using Podman containers.
+This guide explains how to build and run the frontend and backend containers using Podman.
 
----
+## Prerequisites
 
-## 📋 Table of Contents
+1. **Podman installed** on your system
+   - Windows: Install Podman Desktop or use WSL2 with Podman
+   - Linux: Install via package manager (`sudo apt-get install podman` or `sudo dnf install podman`)
+   - macOS: Install via Homebrew (`brew install podman`)
 
-1. [Prerequisites](#prerequisites)
-2. [Building Containers](#building-containers)
-3. [Running Containers](#running-containers)
-4. [Environment Configuration](#environment-configuration)
-5. [Container Management](#container-management)
-6. [Troubleshooting](#troubleshooting)
+2. **Verify Podman installation:**
+   ```bash
+   podman --version
+   ```
 
----
+3. **Environment variables configured:**
+   - Backend: Create `backend/.env` from `backend/env.example`
+   - Frontend: No `.env` required (uses build-time args)
 
-## 🔧 Prerequisites
+## Quick Start
 
-### Required Software
+### Option 1: Use Helper Scripts (Recommended)
 
-- **Podman** 4.0+ installed and running
-- **Git** for cloning repository
-- **API Keys:**
-  - Google Gemini API Key
-  - Google Maps API Key
-  - Fonoster Credentials (optional)
-
-### Verify Podman Installation
-
-```bash
-podman --version
-podman info
+**Windows (PowerShell):**
+```powershell
+.\start-podman.ps1
 ```
 
----
-
-## 🏗️ Building Containers
-
-### Step 1: Clone Repository
-
+**Linux/macOS (Bash):**
 ```bash
-git clone https://github.com/chakradharkalle03-arch/google-intelligent-group.git
-cd google-intelligent-group
+chmod +x start-podman.sh
+./start-podman.sh
 ```
 
-### Step 2: Build Backend Container
+The scripts will automatically:
+- Check Podman installation
+- Create `.env` file if needed
+- Build both containers
+- Start both containers
+- Verify they're running
+
+### Option 2: Manual Build and Run
+
+### 1. Build the Containers
+
+#### Build Backend Container
 
 ```bash
 cd backend
-podman build -t google-intelligent-backend:latest -f Containerfile .
+podman build -t readlife-backend:latest -f Containerfile .
 ```
 
-**Expected output:**
-```
-STEP 1/10: FROM python:3.11-slim
-...
-STEP 10/10: CMD ["hypercorn", "main:app", "-b", "0.0.0.0:8000", "--workers", "2"]
-COMMIT google-intelligent-backend:latest
-```
-
-### Step 3: Build Frontend Container
+#### Build Frontend Container
 
 ```bash
-cd ../frontend
-podman build -t google-intelligent-frontend:latest -f Containerfile .
+cd frontend
+podman build -t readlife-frontend:latest -f Containerfile --build-arg NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 .
 ```
 
-**Expected output:**
-```
-STEP 1/15: FROM node:18-alpine AS builder
-...
-STEP 15/15: CMD ["node", "server.js"]
-COMMIT google-intelligent-frontend:latest
-```
+**Note:** Replace `http://127.0.0.1:8000` with your actual backend URL if different.
 
-### Step 4: Build Fonoster Server Container
+### 2. Run the Containers
 
-```bash
-cd ../fonoster-server
-podman build -t fonoster-server:latest -f Containerfile .
-```
-
-**Expected output:**
-```
-STEP 1/8: FROM node:18-alpine
-...
-STEP 8/8: CMD ["node", "server.js"]
-COMMIT fonoster-server:latest
-```
-
-### Verify Built Images
-
-```bash
-podman images | grep -E "google-intelligent|fonoster"
-```
-
-You should see:
-```
-localhost/google-intelligent-backend    latest    ...    ...    ...MB
-localhost/google-intelligent-frontend    latest    ...    ...    ...MB
-localhost/fonoster-server               latest    ...    ...    ...MB
-```
-
----
-
-## 🚀 Running Containers
-
-### Option 1: Run All Containers with Podman Compose (Recommended)
-
-Create `podman-compose.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  fonoster-server:
-    image: fonoster-server:latest
-    container_name: fonoster-server
-    ports:
-      - "3001:3001"
-    environment:
-      - PORT=3001
-      - FONOSTER_ACCESS_KEY_ID=${FONOSTER_ACCESS_KEY_ID:-}
-      - FONOSTER_API_KEY=${FONOSTER_API_KEY:-}
-      - FONOSTER_API_SECRET=${FONOSTER_API_SECRET:-}
-      - FONOSTER_ENDPOINT=${FONOSTER_ENDPOINT:-https://api.fonoster.com}
-    networks:
-      - app-network
-    restart: unless-stopped
-
-  backend:
-    image: google-intelligent-backend:latest
-    container_name: google-intelligent-backend
-    ports:
-      - "8000:8000"
-    environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-      - FONOSTER_SERVER_URL=http://fonoster-server:3001
-      - BACKEND_HOST=0.0.0.0
-      - BACKEND_PORT=8000
-    depends_on:
-      - fonoster-server
-    networks:
-      - app-network
-    restart: unless-stopped
-
-  frontend:
-    image: google-intelligent-frontend:latest
-    container_name: google-intelligent-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on:
-      - backend
-    networks:
-      - app-network
-    restart: unless-stopped
-
-networks:
-  app-network:
-    driver: bridge
-```
-
-**Run with podman-compose:**
-```bash
-# Install podman-compose if not installed
-pip install podman-compose
-
-# Create .env file with your API keys
-cat > .env << EOF
-GEMINI_API_KEY=your_gemini_api_key_here
-GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
-FONOSTER_ACCESS_KEY_ID=your_access_key_id
-FONOSTER_API_KEY=your_api_key
-FONOSTER_API_SECRET=your_api_secret
-EOF
-
-# Start all containers
-podman-compose up -d
-```
-
-### Option 2: Run Containers Individually
-
-#### 1. Create Podman Network
-
-```bash
-podman network create app-network
-```
-
-#### 2. Run Fonoster Server
+#### Run Backend Container
 
 ```bash
 podman run -d \
-  --name fonoster-server \
-  --network app-network \
-  -p 3001:3001 \
-  -e PORT=3001 \
-  -e FONOSTER_ACCESS_KEY_ID=your_access_key_id \
-  -e FONOSTER_API_KEY=your_api_key \
-  -e FONOSTER_API_SECRET=your_api_secret \
-  fonoster-server:latest
-```
-
-#### 3. Run Backend
-
-```bash
-podman run -d \
-  --name google-intelligent-backend \
-  --network app-network \
+  --name readlife-backend \
   -p 8000:8000 \
-  -e GEMINI_API_KEY=your_gemini_api_key \
-  -e GOOGLE_MAPS_API_KEY=your_google_maps_api_key \
-  -e FONOSTER_SERVER_URL=http://fonoster-server:3001 \
-  -e BACKEND_HOST=0.0.0.0 \
-  -e BACKEND_PORT=8000 \
-  google-intelligent-backend:latest
+  --env-file backend/.env \
+  readlife-backend:latest
 ```
 
-#### 4. Run Frontend
+#### Run Frontend Container
 
 ```bash
 podman run -d \
-  --name google-intelligent-frontend \
-  --network app-network \
+  --name readlife-frontend \
   -p 3000:3000 \
-  -e NEXT_PUBLIC_API_URL=http://localhost:8000 \
-  google-intelligent-frontend:latest
+  readlife-frontend:latest
 ```
 
----
-
-## ⚙️ Environment Configuration
-
-### Using Environment Files
-
-Create `.env` file in project root:
-
-```env
-# Backend
-GEMINI_API_KEY=your_gemini_api_key_here
-GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
-
-# Fonoster (Optional)
-FONOSTER_ACCESS_KEY_ID=your_access_key_id
-FONOSTER_API_KEY=your_api_key
-FONOSTER_API_SECRET=your_api_secret
-FONOSTER_ENDPOINT=https://api.fonoster.com
-```
-
-### Load Environment Variables
+### 3. Verify Containers are Running
 
 ```bash
-# Source the .env file
-source .env
+# List running containers
+podman ps
 
-# Or export individually
-export GEMINI_API_KEY=your_key
-export GOOGLE_MAPS_API_KEY=your_key
+# Check backend health
+curl http://localhost:8000/health
+
+# Check frontend (open in browser)
+# http://localhost:3000
 ```
 
----
+## Detailed Instructions
 
-## 🔍 Container Management
+### Backend Container
 
-### Check Container Status
+#### Building the Backend
+
+```bash
+cd backend
+podman build -t readlife-backend:latest -f Containerfile .
+```
+
+**Build options:**
+- `-t readlife-backend:latest`: Tags the image with name and version
+- `-f Containerfile`: Specifies the Containerfile to use
+- `.`: Build context (current directory)
+
+#### Running the Backend
+
+**Basic run:**
+```bash
+podman run -d \
+  --name readlife-backend \
+  -p 8000:8000 \
+  --env-file backend/.env \
+  readlife-backend:latest
+```
+
+**With custom environment variables:**
+```bash
+podman run -d \
+  --name readlife-backend \
+  -p 8000:8000 \
+  -e GEMINI_API_KEY=your_key_here \
+  -e GOOGLE_MAPS_API_KEY=your_key_here \
+  -e FONOSTER_SERVER_URL=http://localhost:3001 \
+  -e PORT=8000 \
+  -e HOST=0.0.0.0 \
+  readlife-backend:latest
+```
+
+**Run options:**
+- `-d`: Run in detached mode (background)
+- `--name readlife-backend`: Container name
+- `-p 8000:8000`: Map container port 8000 to host port 8000
+- `--env-file backend/.env`: Load environment variables from file
+- `-e KEY=value`: Set individual environment variables
+
+#### Backend Environment Variables
+
+Required variables (set in `backend/.env` or via `-e` flags):
+
+- `GEMINI_API_KEY`: Google Gemini API key (required)
+- `GOOGLE_MAPS_API_KEY`: Google Maps API key (required)
+- `FONOSTER_SERVER_URL`: URL of Fonoster server (default: `http://localhost:3001`)
+- `PORT`: Backend port (default: `8000`)
+- `HOST`: Bind address (default: `0.0.0.0`)
+- `ALLOWED_ORIGINS`: CORS allowed origins (default: `*`)
+
+### Frontend Container
+
+#### Building the Frontend
+
+**Basic build:**
+```bash
+cd frontend
+podman build -t readlife-frontend:latest -f Containerfile --build-arg NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 .
+```
+
+**Build with custom API URL:**
+```bash
+podman build -t readlife-frontend:latest \
+  -f Containerfile \
+  --build-arg NEXT_PUBLIC_API_URL=http://your-backend-url:8000 \
+  .
+```
+
+**Build options:**
+- `-t readlife-frontend:latest`: Tags the image
+- `-f Containerfile`: Specifies the Containerfile
+- `--build-arg NEXT_PUBLIC_API_URL=...`: Sets the backend API URL for the Next.js build
+- `.`: Build context
+
+**Important:** The `NEXT_PUBLIC_API_URL` build argument determines the backend URL that the frontend will use. Make sure this matches your backend container's accessible URL.
+
+#### Running the Frontend
+
+**Basic run:**
+```bash
+podman run -d \
+  --name readlife-frontend \
+  -p 3000:3000 \
+  readlife-frontend:latest
+```
+
+**With custom port:**
+```bash
+podman run -d \
+  --name readlife-frontend \
+  -p 8080:3000 \
+  -e PORT=3000 \
+  readlife-frontend:latest
+```
+
+**Run options:**
+- `-d`: Run in detached mode
+- `--name readlife-frontend`: Container name
+- `-p 3000:3000`: Map container port 3000 to host port 3000
+- `-e PORT=3000`: Set container port (optional, defaults to 3000)
+
+## Container Management
+
+### View Running Containers
 
 ```bash
 podman ps
 ```
 
-**Expected output:**
-```
-CONTAINER ID  IMAGE                              COMMAND           CREATED        STATUS        PORTS                    NAMES
-abc123def456  localhost/fonoster-server:latest   node server.js    2 minutes ago  Up 2 minutes  0.0.0.0:3001->3001/tcp   fonoster-server
-def456ghi789  localhost/google-intelligent-...   hypercorn mai...  2 minutes ago  Up 2 minutes  0.0.0.0:8000->8000/tcp   google-intelligent-backend
-ghi789jkl012  localhost/google-intelligent-...   node server.js    2 minutes ago  Up 2 minutes  0.0.0.0:3000->3000/tcp   google-intelligent-frontend
+### View All Containers (including stopped)
+
+```bash
+podman ps -a
 ```
 
 ### View Container Logs
 
 ```bash
 # Backend logs
-podman logs google-intelligent-backend
+podman logs readlife-backend
 
 # Frontend logs
-podman logs google-intelligent-frontend
-
-# Fonoster logs
-podman logs fonoster-server
+podman logs readlife-frontend
 
 # Follow logs (real-time)
-podman logs -f google-intelligent-backend
+podman logs -f readlife-backend
 ```
 
 ### Stop Containers
 
 ```bash
-# Stop all containers
-podman stop fonoster-server google-intelligent-backend google-intelligent-frontend
-
-# Or stop individually
-podman stop google-intelligent-backend
+podman stop readlife-backend
+podman stop readlife-frontend
 ```
 
-### Start Containers
+### Start Stopped Containers
 
 ```bash
-# Start all containers
-podman start fonoster-server google-intelligent-backend google-intelligent-frontend
+podman start readlife-backend
+podman start readlife-frontend
 ```
 
 ### Remove Containers
 
 ```bash
-# Stop and remove containers
-podman stop fonoster-server google-intelligent-backend google-intelligent-frontend
-podman rm fonoster-server google-intelligent-backend google-intelligent-frontend
+# Stop and remove
+podman rm -f readlife-backend
+podman rm -f readlife-frontend
 ```
 
 ### Remove Images
 
 ```bash
-podman rmi fonoster-server:latest google-intelligent-backend:latest google-intelligent-frontend:latest
+podman rmi readlife-backend:latest
+podman rmi readlife-frontend:latest
 ```
 
----
+## Running Both Containers Together
 
-## 🧪 Testing the Deployment
+### Using Podman Compose (if available)
 
-### 1. Test Fonoster Server
+Create a `podman-compose.yml` file:
 
+```yaml
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    container_name: readlife-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Containerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    container_name: readlife-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+```
+
+Then run:
 ```bash
-curl http://localhost:3001/health
+podman-compose up -d
 ```
 
-**Expected response:**
-```json
-{"status":"ok"}
-```
+### Using a Simple Script
 
-### 2. Test Backend
-
-```bash
-curl http://localhost:8000/health
-```
-
-**Expected response:**
-```json
-{"status":"healthy"}
-```
-
-### 3. Test Frontend
-
-Open browser: `http://localhost:3000`
-
-You should see the Google Intelligent Group UI.
-
-### 4. Test Full Flow
-
-```bash
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Find Indian restaurant near Taipei 101"}'
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Container Won't Start
-
-**Check logs:**
-```bash
-podman logs <container-name>
-```
-
-**Common issues:**
-- Missing environment variables
-- Port already in use
-- Network issues
-
-### Port Already in Use
-
-```bash
-# Find process using port
-podman ps -a | grep <port>
-
-# Or use netstat
-netstat -tulpn | grep :8000
-
-# Stop conflicting container
-podman stop <container-name>
-```
-
-### Network Issues
-
-```bash
-# Check network exists
-podman network ls
-
-# Recreate network
-podman network rm app-network
-podman network create app-network
-```
-
-### Build Failures
-
-**Backend build fails:**
-```bash
-# Check Python version
-podman run --rm python:3.11-slim python --version
-
-# Rebuild with no cache
-podman build --no-cache -t google-intelligent-backend:latest -f backend/Containerfile backend/
-```
-
-**Frontend build fails:**
-```bash
-# Check Node version
-podman run --rm node:18-alpine node --version
-
-# Rebuild with no cache
-podman build --no-cache -t google-intelligent-frontend:latest -f frontend/Containerfile frontend/
-```
-
-### Environment Variables Not Working
-
-```bash
-# Check environment variables in container
-podman exec google-intelligent-backend env | grep GEMINI
-
-# Set environment variables when running
-podman run -e GEMINI_API_KEY=your_key ...
-```
-
----
-
-## 📝 Quick Start Script
-
-Create `run-podman.sh`:
+Create `start-containers.sh`:
 
 ```bash
 #!/bin/bash
 
-# Build all containers
-echo "Building containers..."
-cd backend && podman build -t google-intelligent-backend:latest -f Containerfile . && cd ..
-cd frontend && podman build -t google-intelligent-frontend:latest -f Containerfile . && cd ..
-cd fonoster-server && podman build -t fonoster-server:latest -f Containerfile . && cd ..
+# Build containers
+echo "Building backend..."
+cd backend && podman build -t readlife-backend:latest -f Containerfile . && cd ..
 
-# Create network
-podman network create app-network 2>/dev/null || true
+echo "Building frontend..."
+cd frontend && podman build -t readlife-frontend:latest -f Containerfile --build-arg NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 . && cd ..
 
-# Stop existing containers
-podman stop fonoster-server google-intelligent-backend google-intelligent-frontend 2>/dev/null
-podman rm fonoster-server google-intelligent-backend google-intelligent-frontend 2>/dev/null
+# Run backend
+echo "Starting backend..."
+podman run -d --name readlife-backend -p 8000:8000 --env-file backend/.env readlife-backend:latest
 
-# Load environment variables
-source .env
+# Wait a moment for backend to start
+sleep 2
 
-# Run containers
-echo "Starting containers..."
-podman run -d --name fonoster-server --network app-network -p 3001:3001 \
-  -e PORT=3001 \
-  -e FONOSTER_ACCESS_KEY_ID=${FONOSTER_ACCESS_KEY_ID:-} \
-  -e FONOSTER_API_KEY=${FONOSTER_API_KEY:-} \
-  -e FONOSTER_API_SECRET=${FONOSTER_API_SECRET:-} \
-  fonoster-server:latest
-
-podman run -d --name google-intelligent-backend --network app-network -p 8000:8000 \
-  -e GEMINI_API_KEY=${GEMINI_API_KEY} \
-  -e GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY} \
-  -e FONOSTER_SERVER_URL=http://fonoster-server:3001 \
-  google-intelligent-backend:latest
-
-podman run -d --name google-intelligent-frontend --network app-network -p 3000:3000 \
-  -e NEXT_PUBLIC_API_URL=http://localhost:8000 \
-  google-intelligent-frontend:latest
+# Run frontend
+echo "Starting frontend..."
+podman run -d --name readlife-frontend -p 3000:3000 readlife-frontend:latest
 
 echo "Containers started!"
-echo "Frontend: http://localhost:3000"
 echo "Backend: http://localhost:8000"
-echo "Fonoster: http://localhost:3001"
+echo "Frontend: http://localhost:3000"
 ```
 
-**Make executable and run:**
+Make it executable and run:
 ```bash
-chmod +x run-podman.sh
-./run-podman.sh
+chmod +x start-containers.sh
+./start-containers.sh
 ```
 
+## Network Configuration
+
+### Using Podman Networks
+
+Create a custom network for container communication:
+
+```bash
+# Create network
+podman network create readlife-network
+
+# Run backend on network
+podman run -d \
+  --name readlife-backend \
+  --network readlife-network \
+  -p 8000:8000 \
+  --env-file backend/.env \
+  readlife-backend:latest
+
+# Run frontend on network (update API URL to use container name)
+podman build -t readlife-frontend:latest \
+  -f frontend/Containerfile \
+  --build-arg NEXT_PUBLIC_API_URL=http://readlife-backend:8000 \
+  frontend/
+
+podman run -d \
+  --name readlife-frontend \
+  --network readlife-network \
+  -p 3000:3000 \
+  readlife-frontend:latest
+```
+
+## Troubleshooting
+
+### Container Won't Start
+
+1. **Check logs:**
+   ```bash
+   podman logs readlife-backend
+   podman logs readlife-frontend
+   ```
+
+2. **Verify environment variables:**
+   ```bash
+   podman exec readlife-backend env
+   ```
+
+3. **Check if port is already in use:**
+   ```bash
+   # Linux/macOS
+   lsof -i :8000
+   lsof -i :3000
+   
+   # Windows
+   netstat -ano | findstr :8000
+   netstat -ano | findstr :3000
+   ```
+
+### Frontend Can't Connect to Backend
+
+1. **Verify backend is running:**
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+2. **Check if API URL is correct:**
+   - The `NEXT_PUBLIC_API_URL` must be accessible from the browser
+   - If using containers, use `http://localhost:8000` or the host's IP
+   - If using a network, use the container name: `http://readlife-backend:8000`
+
+3. **Check CORS settings:**
+   - Ensure `ALLOWED_ORIGINS` in backend includes the frontend URL
+
+### Build Failures
+
+1. **Clear build cache:**
+   ```bash
+   podman builder prune
+   ```
+
+2. **Rebuild without cache:**
+   ```bash
+   podman build --no-cache -t readlife-backend:latest -f backend/Containerfile backend/
+   ```
+
+3. **Check for syntax errors in Containerfile:**
+   - Ensure proper line endings (LF, not CRLF)
+   - Verify all paths are correct
+
+### Permission Issues (Linux)
+
+If you encounter permission issues:
+
+```bash
+# Add your user to podman group (if using rootless)
+sudo usermod -aG podman $USER
+# Log out and log back in
+```
+
+Or run with sudo (not recommended for production):
+```bash
+sudo podman run ...
+```
+
+## Production Considerations
+
+1. **Use specific image tags instead of `latest`:**
+   ```bash
+   podman build -t readlife-backend:v1.0.0 -f Containerfile .
+   ```
+
+2. **Set resource limits:**
+   ```bash
+   podman run -d \
+     --name readlife-backend \
+     --memory=512m \
+     --cpus=1 \
+     -p 8000:8000 \
+     --env-file backend/.env \
+     readlife-backend:latest
+   ```
+
+3. **Use secrets management:**
+   - Store sensitive environment variables in Podman secrets
+   - Or use external secret management systems
+
+4. **Enable health checks:**
+   - Health checks are already configured in the backend Containerfile
+   - Monitor with: `podman inspect readlife-backend | grep -A 10 Health`
+
+5. **Set up logging:**
+   ```bash
+   # Use journald or file logging
+   podman run -d \
+     --name readlife-backend \
+     --log-driver journald \
+     -p 8000:8000 \
+     --env-file backend/.env \
+     readlife-backend:latest
+   ```
+
+## Quick Reference Commands
+
+```bash
+# Build
+podman build -t readlife-backend:latest -f backend/Containerfile backend/
+podman build -t readlife-frontend:latest -f frontend/Containerfile --build-arg NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 frontend/
+
+# Run
+podman run -d --name readlife-backend -p 8000:8000 --env-file backend/.env readlife-backend:latest
+podman run -d --name readlife-frontend -p 3000:3000 readlife-frontend:latest
+
+# Stop
+podman stop readlife-backend readlife-frontend
+
+# Start
+podman start readlife-backend readlife-frontend
+
+# Logs
+podman logs -f readlife-backend
+podman logs -f readlife-frontend
+
+# Remove
+podman rm -f readlife-backend readlife-frontend
+
+# Clean up
+podman rmi readlife-backend:latest readlife-frontend:latest
+```
+
+## Additional Resources
+
+- [Podman Documentation](https://docs.podman.io/)
+- [Podman Tutorial](https://podman.io/getting-started/)
+- [Containerfile Best Practices](https://docs.podman.io/en/latest/markdown/podman-build.1.html)
+
 ---
 
-## ✅ Verification Checklist
-
-- [ ] Podman installed and running
-- [ ] All containers built successfully
-- [ ] Network created
-- [ ] Environment variables set
-- [ ] All containers running
-- [ ] Health checks passing
-- [ ] Frontend accessible at http://localhost:3000
-- [ ] Backend accessible at http://localhost:8000
-- [ ] Fonoster accessible at http://localhost:3001
-- [ ] Full query flow working
-
----
-
-## 📚 Additional Resources
-
-- **Podman Documentation:** https://docs.podman.io/
-- **Containerfile Reference:** https://docs.podman.io/en/latest/markdown/podman-build.1.html
-- **Project Repository:** https://github.com/chakradharkalle03-arch/google-intelligent-group
-
----
-
-**Last Updated:** November 2025  
-**Project Version:** 1.0.0
+**Last Updated:** November 2025
 

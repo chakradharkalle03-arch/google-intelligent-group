@@ -33,7 +33,6 @@
 ### 🐳 Container Deployment (Production)
 
 **Platforms:**
-- Podman (local/self-hosted)
 - Docker (any cloud provider)
 
 **Pros:**
@@ -46,7 +45,7 @@
 - More setup complexity
 
 **Documentation:**
-- `docs/PODMAN_DEPLOYMENT.md`
+- `DOCKER_DEPLOYMENT_GUIDE.md`
 - `docs/DEPLOYMENT_GUIDE_ACTUAL.md`
 
 ---
@@ -242,13 +241,8 @@ git push origin main
 - `docs/FREE_DEPLOYMENT_GUIDE.md` - Complete guide
 
 ### Container Deployment
-- `docs/PODMAN_DEPLOYMENT.md` - Podman deployment
+- `DOCKER_DEPLOYMENT_GUIDE.md` - Docker deployment
 - `docs/DEPLOYMENT_GUIDE_ACTUAL.md` - Detailed container guide
-- `docs/PODMAN_WSL_REQUIREMENT.md` - WSL setup for Podman
-
-### Setup & Installation
-- `docs/PODMAN_INSTALLATION_WINDOWS.md` - Podman installation
-- `docs/PODMAN_SETUP_INSTRUCTIONS.md` - Podman setup
 
 ---
 

@@ -1,145 +1,144 @@
-# Podman Local Deployment Script
-# Starts all containers using podman run
+# PowerShell script to build and run Podman containers
+# Usage: .\start-podman.ps1
 
-Write-Host "`n=== STARTING PODMAN CONTAINERS ===" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "ReadLife Podman Container Launcher" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Load environment variables
-Write-Host "Step 1: Loading environment variables..." -ForegroundColor Yellow
-if (Test-Path .env) {
-    Get-Content .env | ForEach-Object {
-        if ($_ -match '^([^#][^=]+)=(.*)$') {
-            $name = $matches[1].Trim()
-            $value = $matches[2].Trim()
-            Set-Item -Path "env:$name" -Value $value
-        }
+# Check if Podman is installed
+Write-Host "Checking Podman installation..." -ForegroundColor Yellow
+try {
+    $podmanVersion = podman --version
+    Write-Host "✓ Podman found: $podmanVersion" -ForegroundColor Green
+} catch {
+    Write-Host "✗ Podman is not installed or not in PATH" -ForegroundColor Red
+    Write-Host "Please install Podman first: https://podman.io/getting-started/installation" -ForegroundColor Red
+    exit 1
+}
+
+# Check if backend .env exists
+if (-not (Test-Path "backend\.env")) {
+    Write-Host "⚠ Warning: backend\.env not found" -ForegroundColor Yellow
+    Write-Host "Creating backend\.env from env.example..." -ForegroundColor Yellow
+    if (Test-Path "backend\env.example") {
+        Copy-Item "backend\env.example" "backend\.env"
+        Write-Host "✓ Created backend\.env - Please edit it with your API keys!" -ForegroundColor Yellow
+    } else {
+        Write-Host "✗ backend\env.example not found!" -ForegroundColor Red
+        exit 1
     }
-    Write-Host "  Environment variables loaded" -ForegroundColor Green
-} else {
-    Write-Host "  WARNING: .env file not found" -ForegroundColor Yellow
 }
 
-# Check required environment variables
-if ([string]::IsNullOrEmpty($env:GEMINI_API_KEY)) {
-    Write-Host "  ERROR: GEMINI_API_KEY is not set" -ForegroundColor Red
-    exit 1
+# Function to check if container exists
+function Test-Container {
+    param([string]$Name)
+    $result = podman ps -a --format "{{.Names}}" | Select-String -Pattern "^$Name$"
+    return $result -ne $null
 }
 
-if ([string]::IsNullOrEmpty($env:GOOGLE_MAPS_API_KEY)) {
-    Write-Host "  ERROR: GOOGLE_MAPS_API_KEY is not set" -ForegroundColor Red
-    exit 1
+# Function to remove existing container
+function Remove-ContainerIfExists {
+    param([string]$Name)
+    if (Test-Container -Name $Name) {
+        Write-Host "Removing existing container: $Name" -ForegroundColor Yellow
+        podman rm -f $Name | Out-Null
+    }
 }
 
-# Create network
-Write-Host "`nStep 2: Creating network..." -ForegroundColor Yellow
-podman network create app-network 2>&1 | Out-Null
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "  Network created" -ForegroundColor Green
-} else {
-    Write-Host "  Network already exists or created" -ForegroundColor Gray
-}
-
-# Stop and remove existing containers
-Write-Host "`nStep 3: Cleaning up existing containers..." -ForegroundColor Yellow
-podman stop fonoster-server google-intelligent-backend google-intelligent-frontend 2>&1 | Out-Null
-podman rm fonoster-server google-intelligent-backend google-intelligent-frontend 2>&1 | Out-Null
-Write-Host "  Cleanup complete" -ForegroundColor Green
-
-# Start fonoster-server
-Write-Host "`nStep 4: Starting fonoster-server..." -ForegroundColor Yellow
-podman run -d `
-  --name fonoster-server `
-  --network app-network `
-  -p 3001:3001 `
-  -e PORT=3001 `
-  -e FONOSTER_ACCESS_KEY_ID=$env:FONOSTER_ACCESS_KEY_ID `
-  -e FONOSTER_API_KEY=$env:FONOSTER_API_KEY `
-  -e FONOSTER_API_SECRET=$env:FONOSTER_API_SECRET `
-  -e FONOSTER_ENDPOINT=$env:FONOSTER_ENDPOINT `
-  -e FONOSTER_FROM_NUMBER=$env:FONOSTER_FROM_NUMBER `
-  --restart unless-stopped `
-  localhost/fonoster-server:latest
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "  Fonoster server started" -ForegroundColor Green
-    Start-Sleep -Seconds 3
-} else {
-    Write-Host "  ERROR: Failed to start fonoster-server" -ForegroundColor Red
-    Write-Host "  Make sure image is built: podman build -t fonoster-server:latest ./fonoster-server" -ForegroundColor Yellow
-    exit 1
-}
-
-# Start backend
-Write-Host "`nStep 5: Starting backend..." -ForegroundColor Yellow
-podman run -d `
-  --name google-intelligent-backend `
-  --network app-network `
-  -p 8000:8000 `
-  -e GEMINI_API_KEY=$env:GEMINI_API_KEY `
-  -e GOOGLE_MAPS_API_KEY=$env:GOOGLE_MAPS_API_KEY `
-  -e FONOSTER_SERVER_URL=http://fonoster-server:3001 `
-  -e BACKEND_HOST=0.0.0.0 `
-  -e BACKEND_PORT=8000 `
-  -e PYTHONUNBUFFERED=1 `
-  --restart unless-stopped `
-  localhost/google-intelligent-backend:latest
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "  Backend started" -ForegroundColor Green
-    Start-Sleep -Seconds 3
-} else {
-    Write-Host "  ERROR: Failed to start backend" -ForegroundColor Red
-    Write-Host "  Make sure image is built: podman build -t google-intelligent-backend:latest ./backend" -ForegroundColor Yellow
-    exit 1
-}
-
-# Start frontend
-Write-Host "`nStep 6: Starting frontend..." -ForegroundColor Yellow
-podman run -d `
-  --name google-intelligent-frontend `
-  --network app-network `
-  -p 3000:3000 `
-  -e NEXT_PUBLIC_API_URL=http://localhost:8000 `
-  -e NODE_ENV=production `
-  -e NEXT_TELEMETRY_DISABLED=1 `
-  --restart unless-stopped `
-  localhost/google-intelligent-frontend:latest
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "  Frontend started" -ForegroundColor Green
-    Start-Sleep -Seconds 3
-} else {
-    Write-Host "  ERROR: Failed to start frontend" -ForegroundColor Red
-    Write-Host "  Make sure image is built: podman build -t google-intelligent-frontend:latest ./frontend" -ForegroundColor Yellow
-    exit 1
-}
-
-# Verify containers
-Write-Host "`nStep 7: Verifying containers..." -ForegroundColor Yellow
-Start-Sleep -Seconds 5
-podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-# Test connectivity
-Write-Host "`nStep 8: Testing connectivity..." -ForegroundColor Yellow
-try {
-    $backend = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing -TimeoutSec 5
-    Write-Host "  Backend: OK (Status: $($backend.StatusCode))" -ForegroundColor Green
-} catch {
-    Write-Host "  Backend: Not ready yet" -ForegroundColor Yellow
-}
-
-try {
-    $frontend = Invoke-WebRequest -Uri "http://localhost:3000" -UseBasicParsing -TimeoutSec 5
-    Write-Host "  Frontend: OK (Status: $($frontend.StatusCode))" -ForegroundColor Green
-} catch {
-    Write-Host "  Frontend: Not ready yet" -ForegroundColor Yellow
-}
-
-Write-Host "`n=== DEPLOYMENT COMPLETE ===" -ForegroundColor Green
+# Build Backend
 Write-Host ""
-Write-Host "Access URLs:" -ForegroundColor Cyan
-Write-Host "  Frontend: http://localhost:3000" -ForegroundColor White
-Write-Host "  Backend:  http://localhost:8000" -ForegroundColor White
-Write-Host "  Fonoster: http://localhost:3001" -ForegroundColor White
+Write-Host "Building backend container..." -ForegroundColor Cyan
+Set-Location backend
+podman build -t readlife-backend:latest -f Containerfile .
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Backend build failed!" -ForegroundColor Red
+    Set-Location ..
+    exit 1
+}
+Write-Host "✓ Backend container built successfully" -ForegroundColor Green
+Set-Location ..
+
+# Build Frontend
+Write-Host ""
+Write-Host "Building frontend container..." -ForegroundColor Cyan
+Set-Location frontend
+$apiUrl = Read-Host "Enter backend API URL (default: http://127.0.0.1:8000)"
+if ([string]::IsNullOrWhiteSpace($apiUrl)) {
+    $apiUrl = "http://127.0.0.1:8000"
+}
+podman build -t readlife-frontend:latest -f Containerfile --build-arg NEXT_PUBLIC_API_URL=$apiUrl .
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Frontend build failed!" -ForegroundColor Red
+    Set-Location ..
+    exit 1
+}
+Write-Host "✓ Frontend container built successfully" -ForegroundColor Green
+Set-Location ..
+
+# Remove existing containers if they exist
+Write-Host ""
+Write-Host "Cleaning up existing containers..." -ForegroundColor Yellow
+Remove-ContainerIfExists -Name "readlife-backend"
+Remove-ContainerIfExists -Name "readlife-frontend"
+
+# Run Backend
+Write-Host ""
+Write-Host "Starting backend container..." -ForegroundColor Cyan
+podman run -d `
+    --name readlife-backend `
+    -p 8000:8000 `
+    --env-file backend\.env `
+    readlife-backend:latest
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to start backend container!" -ForegroundColor Red
+    exit 1
+}
+Write-Host "✓ Backend container started" -ForegroundColor Green
+
+# Wait for backend to be ready
+Write-Host "Waiting for backend to be ready..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
+
+# Check backend health
+try {
+    $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -TimeoutSec 5 -UseBasicParsing
+    if ($response.StatusCode -eq 200) {
+        Write-Host "✓ Backend is healthy" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "⚠ Backend may not be ready yet, but container is running" -ForegroundColor Yellow
+}
+
+# Run Frontend
+Write-Host ""
+Write-Host "Starting frontend container..." -ForegroundColor Cyan
+podman run -d `
+    --name readlife-frontend `
+    -p 3000:3000 `
+    readlife-frontend:latest
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to start frontend container!" -ForegroundColor Red
+    exit 1
+}
+Write-Host "✓ Frontend container started" -ForegroundColor Green
+
+# Summary
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Containers Started Successfully!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Backend:  http://localhost:8000" -ForegroundColor White
+Write-Host "Frontend: http://localhost:3000" -ForegroundColor White
+Write-Host ""
+Write-Host "Useful commands:" -ForegroundColor Yellow
+Write-Host "  View logs:    podman logs -f readlife-backend" -ForegroundColor Gray
+Write-Host "  View logs:    podman logs -f readlife-frontend" -ForegroundColor Gray
+Write-Host "  Stop:         podman stop readlife-backend readlife-frontend" -ForegroundColor Gray
+Write-Host "  Start:        podman start readlife-backend readlife-frontend" -ForegroundColor Gray
+Write-Host "  Remove:       podman rm -f readlife-backend readlife-frontend" -ForegroundColor Gray
 Write-Host ""
 

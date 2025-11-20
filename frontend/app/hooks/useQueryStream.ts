@@ -76,7 +76,7 @@ export function useQueryStream() {
     let errorMessage = 'Failed to get response'
     
     if (apiError.code === 'ERR_NETWORK' || apiError.message?.includes('Network Error')) {
-      errorMessage = 'Network Error: Cannot connect to backend server. Please make sure the backend is running on http://127.0.0.1:8000'
+      errorMessage = 'Network Error: Cannot connect to backend server. Please make sure the backend is running on http://127.0.0.1:8080'
     } else if (apiError.response) {
       errorMessage = apiError.response.data?.detail || 
                     apiError.response.data?.message || 
@@ -98,7 +98,7 @@ export function useQueryStream() {
     setAgentOutputs(INITIAL_OUTPUTS)
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
       
       if (useStreaming) {
         const response = await fetch(`${apiUrl}/query`, {
