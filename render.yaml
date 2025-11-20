@@ -1,0 +1,52 @@
+# Render.com deployment configuration
+# This file allows you to deploy multiple services at once
+
+services:
+  # Backend Service
+  - type: web
+    name: google-intelligent-backend
+    env: python
+    region: oregon  # or: frankfurt, singapore, mumbai, ohio
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: hypercorn main:app --bind 0.0.0.0:$PORT
+    rootDir: backend
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: GEMINI_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: FONOSTER_SERVER_URL
+        sync: false  # Set after deploying Fonoster server
+      - key: ENVIRONMENT
+        value: production
+
+  # Fonoster Server Service
+  - type: web
+    name: google-intelligent-fonoster
+    env: node
+    region: oregon  # or: frankfurt, singapore, mumbai, ohio
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    rootDir: fonoster-server
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+      - key: FONOSTER_ACCESS_KEY_ID
+        sync: false  # Set manually in Render dashboard
+      - key: FONOSTER_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: FONOSTER_API_SECRET
+        sync: false  # Set manually in Render dashboard
+      - key: FONOSTER_ENDPOINT
+        value: https://api.fonoster.com
+      - key: FONOSTER_FROM_NUMBER
+        sync: false  # Set manually in Render dashboard
+
