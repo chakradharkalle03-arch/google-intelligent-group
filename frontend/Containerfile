@@ -15,6 +15,10 @@ RUN npm ci
 # Copy application code
 COPY . .
 
+# Set build-time environment variable (can be overridden at runtime)
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 # Build the application
 RUN npm run build
 
@@ -31,9 +35,10 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Copy built application from builder
-COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Create public directory if it doesn't exist (Next.js may not create it)
+RUN mkdir -p public || true
 
 # Set user
 USER nextjs
