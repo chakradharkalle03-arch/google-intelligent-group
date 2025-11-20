@@ -12,6 +12,33 @@ if (-not (Get-Command podman -ErrorAction SilentlyContinue)) {
 Write-Host "✅ Podman found: $(podman --version)" -ForegroundColor Green
 Write-Host ""
 
+# Check if Podman machine is running
+Write-Host "🔍 Checking Podman machine status..." -ForegroundColor Cyan
+$machineCheck = podman info --format "{{.Host.OS}}" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "⚠️  Podman machine is not running or not initialized." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Attempting to start Podman machine..." -ForegroundColor Yellow
+    podman machine start 2>&1 | Out-Null
+    Start-Sleep -Seconds 5
+    
+    # Check again
+    $machineCheck = podman info --format "{{.Host.OS}}" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Cannot connect to Podman machine." -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Please do one of the following:" -ForegroundColor Yellow
+        Write-Host "1. Start Podman Desktop and wait for machine to initialize" -ForegroundColor White
+        Write-Host "2. Initialize Podman machine: podman machine init" -ForegroundColor White
+        Write-Host "3. If on Windows, install WSL: wsl --install (as Administrator)" -ForegroundColor White
+        Write-Host ""
+        Write-Host "See docs/PODMAN_DEPLOYMENT_GUIDE.md for detailed instructions." -ForegroundColor Cyan
+        exit 1
+    }
+}
+Write-Host "✅ Podman machine is ready" -ForegroundColor Green
+Write-Host ""
+
 # Check if .env file exists
 if (-not (Test-Path .env)) {
     Write-Host "⚠️  .env file not found. Creating template...`n" -ForegroundColor Yellow
