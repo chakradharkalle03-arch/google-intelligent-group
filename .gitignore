@@ -45,3 +45,9 @@ yarn-debug.log*
 backend-image.tar
 frontend-image.tar
 fonoster-image.tar
+
+# Container image tar files
+*.tar
+backend-image.tar
+frontend-image.tar
+fonoster-image.tar
