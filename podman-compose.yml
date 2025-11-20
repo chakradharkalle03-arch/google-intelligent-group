@@ -63,7 +63,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://192.168.0.101:8000}
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
     depends_on:
