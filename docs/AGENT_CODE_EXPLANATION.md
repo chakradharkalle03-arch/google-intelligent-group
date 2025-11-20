@@ -19,8 +19,6 @@ This document provides a comprehensive explanation of the agent architecture and
 
 ## System Architecture Overview
 
-### High-Level Design
-
 The system uses a **Supervisor-driven Multi-Agent Architecture** where:
 
 1. **Supervisor Agent** coordinates and orchestrates all sub-agents
